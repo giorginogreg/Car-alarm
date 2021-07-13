@@ -150,7 +150,7 @@ bool DFRobot_SIM808::sendSMS(char *number, char *data)
     return sim808_wait_for_resp("OK\r\n", CMD);
 }
 
-char DFRobot_SIM808::isSMSunread()
+int DFRobot_SIM808::isSMSunread()
 {
     char gprsBuffer[48]; //48 is enough to see +CMGL:
     char *s;

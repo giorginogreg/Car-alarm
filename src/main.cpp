@@ -134,7 +134,7 @@ void setup()
   sim808.hangup();
   delay(2000); 
   */
-
+  /* 
   sendData("AT+SAPBR=3,1,\"APN\",\"internet.it\"", 1000, true);
   delay(1500);
   sendData("AT+SAPBR=1,1", 1000, true);
@@ -152,17 +152,37 @@ void setup()
   delay(1500);
 
   sendData("AT+HTTPACTION=0", 1000, true);
-
   //************* Close TCP or UDP connections **********
   sim808.close();
 
   //*** Disconnect wireless connection, Close Moving Scene *******
   sim808.disconnect();
+ */
+  Serial.print("indice ultimo msg non letto:");
+  Serial.println(sim808.isSMSunread());
+  int smsUnread = -1;
+  char buffer[300];
+  memset(buffer, 0, 300);
+  char phone[20];
+  memset(phone, 0, 20);
+
+  char datetime[40];
+  memset(datetime, 0, 40);
+
+  while ((smsUnread = sim808.isSMSunread()) > 0)
+  {
+    sim808.readSMS(smsUnread, buffer, 300, phone, datetime);
+    Serial.println("BUFFER:");
+    Serial.println(buffer);
+    Serial.println("Phone:");
+    Serial.println(phone);
+    Serial.println("Datetime:");
+    Serial.println(datetime);
+  }
 }
 
 void loop()
 {
-
   //isAlarmActive = digitalRead(PIN_ROSA) > 0;
 
   /*  sim.readNewSms();
@@ -178,6 +198,8 @@ void loop()
   { }
 
   */
+  /* 
+  ---- GPS ---
   sim808.attachGPS();
 
   coords = get_GPS();
@@ -203,7 +225,7 @@ void loop()
     strcpy(char_array, msg.c_str());
     sim808.sendSMS("3206866749", char_array);
     delay(60000);
-  }
+  } */
 }
 
 String get_GPS()
