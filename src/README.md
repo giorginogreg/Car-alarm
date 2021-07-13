@@ -1,0 +1,1 @@
+Prima versione stabile con libreria sim808, funzionano msg invio e get fix gps, no call
