@@ -114,10 +114,11 @@ void sim808_read_buffer(char *buffer, int count, unsigned int timeout, unsigned 
 
 void sim808_clean_buffer(char *buffer, int count)
 {
-    for (int i = 0; i < count; i++)
+    /*     for (int i = 0; i < count; i++)
     {
         buffer[i] = '\0';
-    }
+    } */
+    memset(buffer, 0, count);
 }
 
 //HACERR quitar esta funcion ?

@@ -1,5 +1,6 @@
 #ifndef ACCELL_GYRO_H
 #define ACCELL_GYRO_H
+#include <I2Cdev.h>
 
 #include "MPU6050.h"
 

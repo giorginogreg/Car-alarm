@@ -75,6 +75,7 @@ bool DFRobot_SIM808::init(void)
     {
         return false;
     }
+
     return true;
 }
 
@@ -153,6 +154,7 @@ bool DFRobot_SIM808::sendSMS(char *number, char *data)
 int DFRobot_SIM808::isSMSunread()
 {
     char gprsBuffer[48]; //48 is enough to see +CMGL:
+
     char *s;
 
     sim808_check_with_cmd("AT+CMGF=1\r\n", "OK\r\n", CMD);
@@ -185,7 +187,7 @@ int DFRobot_SIM808::isSMSunread()
          OK           
     */
 
-    sim808_clean_buffer(gprsBuffer, 31);
+    sim808_clean_buffer(gprsBuffer, 48);
     sim808_read_buffer(gprsBuffer, 30, DEFAULT_TIMEOUT);
     //Serial.print("Buffer isSMSunread: ");Serial.println(gprsBuffer);
 
@@ -294,8 +296,10 @@ bool DFRobot_SIM808::readSMS(int messageIndex, char *message, int length, char *
             }
             message[i] = '\0';
         }
+        sim808_clean_buffer(gprsBuffer, sizeof(gprsBuffer));
         return true;
     }
+    sim808_clean_buffer(gprsBuffer, sizeof(gprsBuffer));
     return false;
 }
 
