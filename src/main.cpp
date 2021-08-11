@@ -7,10 +7,10 @@
 #include <SoftwareSerial.h>
 #include <DFRobot_sim808.h>
 
-#define PIN_TX PB0
-#define PIN_RX PB1
+#define PIN_TX_SIM PA8
+#define PIN_RX_SIM PB10
 #define DEBUG true
-#define SIM_PWR PB2           ///< SIM808 PWRKEY
+#define SIM_PWR PB4           ///< SIM808 PWRKEY
 #define NO_FIX_GPS_DELAY 3000 ///< Delay between each GPS read when no fix is acquired
 #define FIX_GPS_DELAY 10000   ///< Delay between each GPS read when a fix is acquired
 #define POSITION_SIZE 128     ///< Size of the position buffer
@@ -24,7 +24,7 @@ const int PIN_ROSA = PB3;
 #define SEND_POSITION_CAR 3   //SEND_POSITION_CAR
 char PHONE_NUMBER_WHO_HAS_TO_SEND_SMS[11] = "3206866749";
 
-SoftwareSerial mySerial(PIN_TX, PIN_RX);
+SoftwareSerial mySerial(PIN_TX_SIM, PIN_RX_SIM);
 DFRobot_SIM808 sim808(&mySerial); //Connect RX,TX,PWR
 
 // Variables definition
@@ -36,14 +36,13 @@ bool isAlarmActive;
 MyGyro gyro;
 String res;
 
-String coords, coordsToOutput;
+String coords;
 
-char frame[100];
-char GNSSrunstatus[1];
-char Fixstatus[1];
+#define FRAME_LENGTH 140
+char frame[FRAME_LENGTH];
 char UTCdatetime[18];
-char latitude[10];
-char logitude[11];
+char latitude[11];
+char longitude[12];
 //char altitude[8];
 /* char speedOTG[6];
 char course[6];
@@ -104,10 +103,13 @@ String sendData(String command, const int timeout, boolean debug)
 
 void setup()
 {
-
+  pinMode(PIN_RX_SIM, OUTPUT);
+  pinMode(PIN_TX_SIM, INPUT);
+  
   mySerial.begin(SIM808_BAUDRATE);
   Serial.begin(SERIAL_BAUDRATE);
   pinMode(SIM_PWR, OUTPUT);
+  
 
   // Initialize with log level and log output.
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
@@ -115,12 +117,12 @@ void setup()
   // gyro.setupGyro();
   // setupUS();
 
-  /* 
-    Spento per debug
-    if (!sim808.checkPowerUp())
-    sim808.powerUpDown(SIM_PWR);
-    Log.notice("Initializing" NL);
-     */
+   
+  if (!sim808.checkPowerUp())
+   sim808.powerUpDown(SIM_PWR);
+      
+
+  Log.notice("Initializing" NL);
 
   //delay(15000);
 
@@ -158,8 +160,10 @@ void loop()
 
   if ((currentMillis - previousMillis) >= interval)
   {
+    
     previousMillis = currentMillis;
-    int smsRead = readSmsFromMyPhone();
+    //int smsRead = readSmsFromMyPhone();
+    int smsRead = 3;
     /* Log.notice("Cod RES" NL);
      Serial.println(smsRead);*/
 
@@ -256,21 +260,21 @@ void loop()
 
 String get_GPS()
 {
-  coordsToOutput = "";
+  String coordsToOutput = "";
   int8_t counter, answer;
   long previous;
   float latGPS;
   float longGPS;
   counter = 0;
   answer = 0;
-  memset(frame, 0, sizeof(frame)); // Initialize the string
+  memset(frame, '\0', sizeof(char)*FRAME_LENGTH); // Initialize the string
   previous = millis();
 
   mySerial.write("AT+CGNSINF\r\n");
 
   do
   {
-    if (mySerial.available() != 0)
+    if (mySerial.available() > 0)
     {
       frame[counter] = mySerial.read();
       counter++;
@@ -280,55 +284,76 @@ String get_GPS()
         answer = 1;
       }
     }
-  } while ((answer == 0) && ((millis() - previous) < 2000));
-
-  frame[counter - 3] = '\0';
+  } while ((answer == 0) && ((millis() - previous) < 3000));
+  
+  if(counter >= 6)
+    frame[counter - 6] = '\0'; 
   if (DEBUG)
   {
     Serial.println("\n\n\n\n\n ----- DEBUG BUFFER dopo la lettura del fix --------- ");
     Serial.println(frame);
-    Serial.println("\n\n\n\n\n ----- ---------- ---------- --------- ");
+    Serial.println("\n----- ---------- ---------- --------- ");
   }
-  strtok_single(frame, ": ");
-  strtok_single(NULL, ",");                      // Gets GNSSrunstatus
-  strtok_single(NULL, ",");                      // Gets Fix status
-  strcpy(UTCdatetime, strtok_single(NULL, ",")); // Gets UTC date and time
-  strcpy(latitude, strtok_single(NULL, ","));    // Gets latitude
-  strcpy(logitude, strtok_single(NULL, ","));    // Gets longitude
 
-  /*   strcpy(altitude, strtok_single(NULL, ","));     // Gets MSL altitude
-  strcpy(speedOTG, strtok_single(NULL, ","));     // Gets speed over ground
-  strcpy(course, strtok_single(NULL, ","));       // Gets course over ground
-  fixmode = atoi(strtok_single(NULL, ","));       // Gets Fix Mode
-  strtok_single(NULL, ",");
-  strcpy(HDOP, strtok_single(NULL, ",")); // Gets HDOP
-  strcpy(PDOP, strtok_single(NULL, ",")); // Gets PDOP
-  strcpy(VDOP, strtok_single(NULL, ",")); // Gets VDOP
-  strtok_single(NULL, ",");
-  strcpy(satellitesinview, strtok_single(NULL, ","));      // Gets GNSS Satellites in View
-  strcpy(GNSSsatellitesused, strtok_single(NULL, ","));    // Gets GNSS Satellites used
-  strcpy(GLONASSsatellitesused, strtok_single(NULL, ",")); // Gets GLONASS Satellites used
-  strtok_single(NULL, ",");
-  strcpy(cn0max, strtok_single(NULL, ",")); // Gets C/N0 max
-  strcpy(HPA, strtok_single(NULL, ","));    // Gets HPA
-  strcpy(VPA, strtok_single(NULL, "\r"));   // Gets VPA */
+  if(answer) {
+    strtok_single(frame, ": ");
+    strtok_single(NULL, ",");                      // Gets GNSSrunstatus
+    strtok_single(NULL, ",");                      // Gets Fix status
+    strcpy(UTCdatetime, strtok_single(NULL, ",")); // Gets UTC date and time
+    strcpy(latitude, strtok_single(NULL, ","));    // Gets latitude
+    strcpy(longitude, strtok_single(NULL, ","));    // Gets longitude
+    //Serial.println("FRAME AFTER STRTOK");
+    //Serial.println(frame);
+    /*   strcpy(altitude, strtok_single(NULL, ","));     // Gets MSL altitude
+    strcpy(speedOTG, strtok_single(NULL, ","));     // Gets speed over ground
+    strcpy(course, strtok_single(NULL, ","));       // Gets course over ground
+    fixmode = atoi(strtok_single(NULL, ","));       // Gets Fix Mode
+    strtok_single(NULL, ",");
+    strcpy(HDOP, strtok_single(NULL, ",")); // Gets HDOP
+    strcpy(PDOP, strtok_single(NULL, ",")); // Gets PDOP
+    strcpy(VDOP, strtok_single(NULL, ",")); // Gets VDOP
+    strtok_single(NULL, ",");
+    strcpy(satellitesinview, strtok_single(NULL, ","));      // Gets GNSS Satellites in View
+    strcpy(GNSSsatellitesused, strtok_single(NULL, ","));    // Gets GNSS Satellites used
+    strcpy(GLONASSsatellitesused, strtok_single(NULL, ",")); // Gets GLONASS Satellites used
+    strtok_single(NULL, ",");
+    strcpy(cn0max, strtok_single(NULL, ",")); // Gets C/N0 max
+    strcpy(HPA, strtok_single(NULL, ","));    // Gets HPA
+    strcpy(VPA, strtok_single(NULL, "\r"));   // Gets VPA */
 
-  if (strlen(logitude) != 0 && strlen(latitude) != 0)
+    if (strlen(longitude) != 0 && strlen(latitude) != 0)
+    {
+      Serial.println("Coord valide");
+    
+      longitude_s = String(longitude);
+      Serial.println("Longitudine in stringa:" + longitude_s);
+
+      latitude_s = String(latitude);
+      Serial.println("latitudine in stringa:" + latitude_s);
+
+      /*  
+        longGPS = atof(longitude);
+        latGPS = atof(latitude);
+      */
+      /*
+        Serial.println("mia float latitudine");
+        Serial.println(latGPS, 6);
+        Serial.println("mia float latitudine");
+        Serial.println(longGPS, 6);
+      */
+
+      coordsToOutput.concat(latitude_s);
+      coordsToOutput.concat(",");
+      coordsToOutput.concat(longitude_s);
+    }
+  
+  }
+  else
   {
-    longitude_s = String(logitude);
-    latitude_s = String(latitude);
-    /*  longGPS = atof(logitude);
-  latGPS = atof(latitude);
- */
-    /*   Serial.println("mia float latitudine");
-    Serial.println(latGPS, 6);
-    Serial.println("mia float latitudine");
-    Serial.println(longGPS, 6); */
-
-    coordsToOutput.concat(latitude_s);
-    coordsToOutput.concat(",");
-    coordsToOutput.concat(longitude_s);
+    delay(5000);
+    mySerial.flush();
   }
+ 
   return coordsToOutput;
 }
 
@@ -418,7 +443,7 @@ String floatToString(float x, byte precision = 2)
 
 void initializeBuffersForSms()
 {
-  memset(buffer, 0, 300);
-  memset(phone, 0, 20);
-  memset(datetime, 0, 40);
+  memset(buffer, '\0', 300);
+  memset(phone, '\0', 20);
+  memset(datetime, '\0', 40);
 }
