@@ -7,10 +7,10 @@
 #include <SoftwareSerial.h>
 #include <DFRobot_sim808.h>
 
-#define PIN_TX_SIM PA8
-#define PIN_RX_SIM PB10
+#define PIN_TX_SIM PB0
+#define PIN_RX_SIM PB1
 #define DEBUG true
-#define SIM_PWR PB4           ///< SIM808 PWRKEY
+#define SIM_PWR PB2           ///< SIM808 PWRKEY
 #define NO_FIX_GPS_DELAY 3000 ///< Delay between each GPS read when no fix is acquired
 #define FIX_GPS_DELAY 10000   ///< Delay between each GPS read when a fix is acquired
 #define POSITION_SIZE 128     ///< Size of the position buffer
