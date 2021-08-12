@@ -34,7 +34,7 @@
 extern Stream *serialSIM808;
 
 DFRobot_SIM808 *DFRobot_SIM808::inst;
-char receivedStackIndex = 0;
+int receivedStackIndex = 0; //Modificato da char a int
 char receivedStack[130];
 const char *des = "$GPRMC";
 
@@ -58,19 +58,16 @@ DFRobot_SIM808::DFRobot_SIM808(SoftwareSerial *mySerial)
 
 bool DFRobot_SIM808::init(void)
 {
-    //閿熸枻鎷烽敓绱窽鎸囬敓鏂ゆ嫹閿熻鍑ゆ嫹閿熸枻鎷锋晥
     if (!sim808_check_with_cmd("AT\r\n", "OK\r\n", CMD))
     {
         return false;
     }
-    //閿熸枻鎷烽敓绲奍M閿熻鍑ゆ嫹閿熸枻鎷锋簮閿熺晫璇濋敓鏂ゆ嫹閿熸枻鎷烽敓鏂ゆ嫹閿熸枻鎷�
     // 1 : OK
     if (!sim808_check_with_cmd("AT+CFUN=1\r\n", "OK\r\n", CMD))
     {
         return false;
     }
 
-    //閿熸枻鎷烽敓绲奍M閿熸枻鎷风姸鎬�
     if (!checkSIMStatus())
     {
         return false;
@@ -100,7 +97,7 @@ void DFRobot_SIM808::powerReset(uint8_t pin)
     digitalWrite(pin, LOW);
     delay(1000);
     digitalWrite(pin, HIGH);
-    delay(3000);
+    delay(4000);
 }
 
 bool DFRobot_SIM808::checkSIMStatus(void)
@@ -113,7 +110,7 @@ bool DFRobot_SIM808::checkSIMStatus(void)
         sim808_send_cmd("AT+CPIN?\r\n");
         sim808_read_buffer(gprsBuffer, 32, DEFAULT_TIMEOUT);
         if ((NULL != strstr(gprsBuffer, "+CPIN: READY")))
-        { //閿熸枻鎷风ずSIM鐘舵€侀敓鏂ゆ嫹閿熸枻鎷�
+        {
             break;
         }
         count++;
@@ -148,7 +145,10 @@ bool DFRobot_SIM808::sendSMS(char *number, char *data)
     sim808_send_cmd(data);
     delay(500);
     sim808_send_End_Mark();
-    return sim808_wait_for_resp("OK\r\n", CMD);
+    bool result = sim808_wait_for_resp("OK\r\n", CMD);
+    delay(3000);
+    sim808_flush_serial();
+    return result;
 }
 
 int DFRobot_SIM808::isSMSunread()
@@ -864,13 +864,13 @@ void DFRobot_SIM808::listen(void)
         gprsSerial->listen();
 }
 
-bool DFRobot_SIM808::isListening(void)
+/* bool DFRobot_SIM808::isListening(void)
 {
     // if(serialFlag)
     // return hgprsSerial.isListening();
     // else
     // return gprsSerial.isListening();
-}
+} */
 
 uint32_t DFRobot_SIM808::str_to_ip(const char *str)
 {
