@@ -81,11 +81,11 @@ void sendPostData();
 void call();
 // --- Code!
 
-String sendData(String command, const int timeout, boolean debug)
+String sendData(String command, const unsigned int timeout)
 {
   String response = "";
   mySerial.println(command);
-  long int time = millis();
+  long unsigned int time = millis();
   while ((time + timeout) > millis())
   {
     while (mySerial.available())
@@ -94,9 +94,9 @@ String sendData(String command, const int timeout, boolean debug)
       response += c;
     }
   }
-  if (debug)
+  if (DEBUG)
   {
-    Serial.print(response);
+    Serial.println(response);
   }
   return response;
 }
