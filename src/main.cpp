@@ -9,13 +9,14 @@
 
 #define PIN_TX_SIM PB0
 #define PIN_RX_SIM PB1
+#define SIM_PWR PB2 ///< SIM808 PWRKEY
+#define SIM_RST PB3 ///< SIM808 PWRKEY
 #define DEBUG true
-#define SIM_PWR PB2           ///< SIM808 PWRKEY
-#define NO_FIX_GPS_DELAY 3000 ///< Delay between each GPS read when no fix is acquired
-#define FIX_GPS_DELAY 10000   ///< Delay between each GPS read when a fix is acquired
-#define POSITION_SIZE 128     ///< Size of the position buffer
-#define SIM808_BAUDRATE 4800  ///< Control the baudrate use to communicate with the SIM808 module
-#define SERIAL_BAUDRATE 9600  ///< Control the baudrate use to communicate with the SIM808 module
+// #define NO_FIX_GPS_DELAY 3000 ///< Delay between each GPS read when no fix is acquired
+// #define FIX_GPS_DELAY 10000   ///< Delay between each GPS read when a fix is acquired
+#define POSITION_SIZE 128    ///< Size of the position buffer
+#define SIM808_BAUDRATE 4800 ///< Control the baudrate use to communicate with the SIM808 module
+#define SERIAL_BAUDRATE 9600 ///< Control the baudrate use to communicate with the SIM808 module
 #define NL "\n"
 const int PIN_ROSA = PB3;
 
@@ -34,35 +35,28 @@ long duration;                         // variable for the duration of sound wav
 bool isAlarmActive;
 
 MyGyro gyro;
-String res;
 
 String coords;
 
 #define FRAME_LENGTH 140
 char frame[FRAME_LENGTH];
+int GNSSrunstatus;
+int Fixstatus;
 char UTCdatetime[18];
 char latitude[11];
 char longitude[12];
-//char altitude[8];
-/* char speedOTG[6];
-char course[6];
-char fixmode[1];
-char HDOP[4];
-char PDOP[4];
-char VDOP[4];
-char satellitesinview[2];
-char GNSSsatellitesused[2];
-char GLONASSsatellitesused[2];
-char cn0max[2];
-char HPA[6];
-char VPA[6]; */
-String longitude_s, latitude_s;
+
+String longitude_s,
+    latitude_s;
 
 int adaptive_delay = 1000;
-int smsUnread = -1;
-char buffer[300];
+int smsRead = -1;   // Determina quale è il messaggio letto tra quelli da calcolare
+int smsUnread = -1; // Indice per l'ultimo messaggio in memoria sms
+#define BUFFER_SMS_SIZE 300
+char smsBuffer[BUFFER_SMS_SIZE];
 char phone[20];
 char datetime[40];
+
 bool gps_attached = false;
 bool sendPositionInPost = false;
 unsigned long previousMillis, currentMillis;
@@ -79,6 +73,8 @@ boolean haveToSendPeriodicallyPosition();
 int readSmsFromMyPhone();
 void sendPostData();
 void call();
+bool doActionBasedOnSmsRcvd(unsigned int smsReceived);
+void restartSimAndAVR();
 // --- Code!
 
 String sendData(String command, const unsigned int timeout)
@@ -119,10 +115,12 @@ void setup()
 
   do
   {
-    sim808.powerReset(SIM_RST);
-    delay(500);
+    //Log.noticeln("Resetting Sim808");
+    //sim808.powerReset(SIM_RST);
+    //delay(500);
+    Log.noticeln("Powering Sim808");
     sim808.powerUpDown(SIM_PWR);
-    delay(7000);
+    delay(5000);
   } while (!sim808.checkPowerUp());
 
   Log.notice("Initializing" NL);
@@ -161,95 +159,33 @@ void loop()
 {
   currentMillis = millis();
 
-  if ((currentMillis - previousMillis) >= interval)
+  if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
-    
-    previousMillis = currentMillis;
-    //int smsRead = readSmsFromMyPhone();
-    int smsRead = 3;
-    /* Log.notice("Cod RES" NL);
-     Serial.println(smsRead);*/
+    previousMillis = millis();
 
-    switch (smsRead)
-    {
-    case START_SEND_GPS_SITE:
-      if (!gps_attached)
-        gps_attached = sim808.attachGPS();
-      if (!gps_attached)
-      {
-        Log.notice("Error connection with GPS" NL);
-        return; // Il sim non riesce a connettere il GPS!
-      }
-      if (!sim808_check_with_cmd("AT+SAPBR=3,1,\"APN\",\"internet.it\"", "OK", CMD))
-      {
-        Log.notice("Error connection with gprs" NL);
-        return;
-      }
-      delay(1500);
-
-      if (!sim808_check_with_cmd("AT+SAPBR=1,1", "OK", CMD))
-      {
-        Log.notice("Error connection with gprs 2" NL);
-        return;
-      }
-      delay(1500);
-      sendPositionInPost = true;
-      break;
-    case STOP_SEND_GPS_SITE:
-      sendPositionInPost = false;
-      sim808.detachGPS();
-      sim808.close();
-      sim808.disconnect();
-      break;
-    case SEND_POSITION_CAR:
-      if (!gps_attached)
-        gps_attached = sim808.attachGPS();
-      if (!gps_attached)
-      {
-        Log.notice("Error connection with GPS" NL);
-        return; // Il sim non riesce a connettere il GPS!
-      }
-
-      coords = get_GPS();
-      delay(1500);
-
-      if (coords != "")
-      {
-        Log.notice("Coordinate ottenute: " NL);
-        Serial.println(coords);
-        // ---- Invio SMS
-        String msg = "Posizione auto: https://www.google.com/maps/search/?api=1&query=" + coords;
-
-        int n = msg.length();
-        char char_array[n + 1];
-        strcpy(char_array, msg.c_str());
-        Serial.println("INVIO FAKE SMS CON TESTO: ");
-        Serial.println(char_array);
-        //sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, char_array);
-      }
-      else
-        Log.notice("coord vuote");
-      break;
-    default:
-      break;
-    }
+    int smsRead = readSmsFromMyPhone();
+    Serial.print("smsRead: ");
+    Serial.println(smsRead);
+    //smsRead = SEND_POSITION_CAR; // Only for debug
   }
 
+  if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
+    return;
   if (sendPositionInPost)
   {
+    Log.notice("Invio posizione in post");
+
     coords = get_GPS();
-    delay(1500);
-    if (coords != "")
-    {
-      Log.notice("Coordinate ottenute: " NL);
-      Serial.println(coords);
-      sendPostData();
-    }
+    delay(2500);
+
+    sendPostData();
+    sendPositionInPost = false;
   }
 
   if (isAlarmActive)
   {
-    measured_distance = getDistance();
+    Log.notice("Allarme attivo!");
+    //measured_distance = getDistance();
     //gyro.updateAccellGyro();
 
     if (
@@ -257,106 +193,95 @@ void loop()
         (measured_distance - first_distance < sogliaDistanza))
       // casi coperti: furto nella notte, furto con jammer o botta all'auto.
       call();
+    delay(5000);
   }
-  delay(5000);
 }
 
 String get_GPS()
 {
-  String coordsToOutput = "";
-  int8_t counter, answer;
-  long previous;
-  float latGPS;
-  float longGPS;
-  counter = 0;
-  answer = 0;
-  memset(frame, '\0', sizeof(char)*FRAME_LENGTH); // Initialize the string
-  previous = millis();
 
-  mySerial.write("AT+CGNSINF\r\n");
+  long firstTimer, secondTimer;
+
+  bool fixObtained = false;
+  secondTimer = millis();
+  String coordsToOutput = "";
 
   do
   {
-    if (mySerial.available() > 0)
+    int8_t counter, answer;
+    counter = 0;
+    answer = 0;
+    firstTimer = millis();
+
+    memset(frame, '\0', sizeof(char) * FRAME_LENGTH); // Initialize the string
+    Log.noticeln("Invio cgnsinf");
+    mySerial.write("AT+CGNSINF\r\n");
+    delay(500);
+    do
     {
-      frame[counter] = mySerial.read();
-      counter++;
-      // check if the desired answer is in the response of the module
-      if (strstr(frame, "OK") != NULL)
+      if (mySerial.available() > 0)
       {
-        answer = 1;
+        frame[counter] = mySerial.read();
+        counter++;
+        // check if the desired answer is in the response of the module
+        if (strstr(frame, "OK") != NULL)
+          answer = 1;
+      }
+    } while ((answer == 0) && ((millis() - firstTimer) < 3000));
+
+    if (counter >= 6)
+      frame[counter - 6] = '\0'; // Counter - 6 perchè 6 sono i caratteri seguenti: \r \r O K \n \r
+
+    if (DEBUG)
+    {
+      Log.notice("answer: ");
+      Serial.println(answer);
+
+      Serial.println("\n\n\n\n\n ----- DEBUG BUFFER dopo la lettura del fix --------- ");
+      Serial.println(frame);
+      Serial.println("\n----- ---------- ---------- --------- ");
+    }
+
+    if (answer) // Se ho ricevuto ok (anche se non ho fix), considero i dati.
+    {
+
+      strtok_single(frame, ": ");
+
+      strtok_single(NULL, ",");                      // Gets GNSSrunstatus
+      strtok_single(NULL, ",");                      // Gets Fix status // Possibile bug?
+      strcpy(UTCdatetime, strtok_single(NULL, ",")); // Gets UTC date and time
+      strcpy(latitude, strtok_single(NULL, ","));    // Gets latitude
+      strcpy(longitude, strtok_single(NULL, ","));   // Gets longitude
+
+      if (strlen(longitude) != 0 && strlen(latitude) != 0)
+      {
+        longitude_s = String(longitude);
+        latitude_s = String(latitude);
+
+        coordsToOutput.concat(latitude_s);
+        coordsToOutput.concat(",");
+        coordsToOutput.concat(longitude_s);
+        fixObtained = 1;
       }
     }
-  } while ((answer == 0) && ((millis() - previous) < 3000));
-  
-  if(counter >= 6)
-    frame[counter - 6] = '\0'; 
-  if (DEBUG)
-  {
-    Serial.println("\n\n\n\n\n ----- DEBUG BUFFER dopo la lettura del fix --------- ");
-    Serial.println(frame);
-    Serial.println("\n----- ---------- ---------- --------- ");
-  }
-
-  if(answer) {
-    strtok_single(frame, ": ");
-    strtok_single(NULL, ",");                      // Gets GNSSrunstatus
-    strtok_single(NULL, ",");                      // Gets Fix status
-    strcpy(UTCdatetime, strtok_single(NULL, ",")); // Gets UTC date and time
-    strcpy(latitude, strtok_single(NULL, ","));    // Gets latitude
-    strcpy(longitude, strtok_single(NULL, ","));    // Gets longitude
-    //Serial.println("FRAME AFTER STRTOK");
-    //Serial.println(frame);
-    /*   strcpy(altitude, strtok_single(NULL, ","));     // Gets MSL altitude
-    strcpy(speedOTG, strtok_single(NULL, ","));     // Gets speed over ground
-    strcpy(course, strtok_single(NULL, ","));       // Gets course over ground
-    fixmode = atoi(strtok_single(NULL, ","));       // Gets Fix Mode
-    strtok_single(NULL, ",");
-    strcpy(HDOP, strtok_single(NULL, ",")); // Gets HDOP
-    strcpy(PDOP, strtok_single(NULL, ",")); // Gets PDOP
-    strcpy(VDOP, strtok_single(NULL, ",")); // Gets VDOP
-    strtok_single(NULL, ",");
-    strcpy(satellitesinview, strtok_single(NULL, ","));      // Gets GNSS Satellites in View
-    strcpy(GNSSsatellitesused, strtok_single(NULL, ","));    // Gets GNSS Satellites used
-    strcpy(GLONASSsatellitesused, strtok_single(NULL, ",")); // Gets GLONASS Satellites used
-    strtok_single(NULL, ",");
-    strcpy(cn0max, strtok_single(NULL, ",")); // Gets C/N0 max
-    strcpy(HPA, strtok_single(NULL, ","));    // Gets HPA
-    strcpy(VPA, strtok_single(NULL, "\r"));   // Gets VPA */
-
-    if (strlen(longitude) != 0 && strlen(latitude) != 0)
+    else // Risposta non ottenuta in tempo, oppure ok non ricevuto. Flusho seriale dopo attesa di 5 secondi.
     {
-      Serial.println("Coord valide");
-    
-      longitude_s = String(longitude);
-      Serial.println("Longitudine in stringa:" + longitude_s);
-
-      latitude_s = String(latitude);
-      Serial.println("latitudine in stringa:" + latitude_s);
-
-      /*  
-        longGPS = atof(longitude);
-        latGPS = atof(latitude);
-      */
-      /*
-        Serial.println("mia float latitudine");
-        Serial.println(latGPS, 6);
-        Serial.println("mia float latitudine");
-        Serial.println(longGPS, 6);
-      */
-
-      coordsToOutput.concat(latitude_s);
-      coordsToOutput.concat(",");
-      coordsToOutput.concat(longitude_s);
+      Log.noticeln("Risposta senza OK o non in tempo valido");
+      delay(5000);
+      mySerial.flush();
     }
-  
-  }
-  else
-  {
-    delay(5000);
-    mySerial.flush();
-  }
- 
+    if (!fixObtained)
+    {
+      Log.noticeln("Fix non ancora ottenuto, aspetto 3 sec prima del prossimo comando");
+      delay(3000); // Aspetto 5 sec prima di mandare il prossimo comando.
+    }
+  } while (
+      !fixObtained &&
+      ((millis() - secondTimer) < 300000)); // Attendo 5 minuti, appeno supero e non ho ancora ottenuto fix, resetto gps e avr
+
+  if (!fixObtained && (millis() - secondTimer) < 300000)
+    restartSimAndAVR();
+
   return coordsToOutput;
 }
 
@@ -367,13 +292,13 @@ static char *strtok_single(char *str, char const *delims)
   char *p, *ret = 0;
 
   if (str != NULL)
-    src = str;
+    src = str; // La sorgente diventa il puntatore a carattere passato in input
 
   if (src == NULL || *src == '\0') // Fix 1
-    return NULL;
+    return NULL;                   // Se il puntatore è null, o un delimitatore di fine stringa, ritorno null
 
-  ret = src; // Fix 2
-  if ((p = strpbrk(src, delims)) != NULL)
+  ret = src;                              // Altrimenti, il puntatore di src lo faccio puntare ad una stringa pari a quella in input
+  if ((p = strpbrk(src, delims)) != NULL) // Se è stato trovato nella stringa in input il delim, ritorno un puntatore che parte dalla posizione della stringa dove è stato trovato
   {
     *p = 0;
     src = ++p;
@@ -388,7 +313,7 @@ void call()
 {
   //*********Call specified number***************
 
-  sim808.callUp("3206866749");
+  sim808.callUp(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS);
   delay(15000);
   sim808.hangup();
   delay(2000);
@@ -427,22 +352,22 @@ int readSmsFromMyPhone()
 {
   while ((smsUnread = sim808.isSMSunread()) > 0)
   {
-    sim808.readSMS(smsUnread, buffer, 300, phone, datetime);
+    sim808.readSMS(smsUnread, smsBuffer, (int)BUFFER_SMS_SIZE, phone, datetime);
     Log.notice("BUFFER:");
-    Log.notice(buffer);
+    Log.notice(smsBuffer);
 
     if (strstr(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, phone) != NULL)
     {
-      if (strstr("ATTIVA_INVIO_POSIZIONE_GPS", buffer) != NULL)
+      if (strstr("ATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
         return START_SEND_GPS_SITE;
-      else if (strstr("DISATTIVA_INVIO_POSIZIONE_GPS", buffer) != NULL)
+      else if (strstr("DISATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
         return STOP_SEND_GPS_SITE;
       else
         return SEND_POSITION_CAR;
     }
     initializeBuffersForSms();
   }
-  return SEND_POSITION_CAR;
+  return -1; // TODO: rimuovere dopo debug
 }
 
 String floatToString(float x, byte precision = 2)
@@ -450,9 +375,89 @@ String floatToString(float x, byte precision = 2)
   return String(x, precision);
 }
 
+bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
+{
+  switch (smsReceived)
+  {
+  case START_SEND_GPS_SITE:
+    if (!gps_attached)
+      gps_attached = sim808.attachGPS();
+    if (!gps_attached)
+    {
+      Log.noticeln("Error connection with GPS" NL);
+      return false; // Il sim non riesce a connettere il GPS!
+    }
+    if (!sim808_check_with_cmd("AT+SAPBR=3,1,\"APN\",\"internet.it\"\r\n", "OK", CMD))
+    {
+      Log.noticeln("Error connection with gprs" NL);
+      return false;
+    }
+    delay(3500);
+
+    if (!sim808_check_with_cmd("AT+SAPBR=1,1\r\n", "OK", CMD))
+    {
+      Log.noticeln("Error connection with gprs 2" NL); //TODO: Anche qui, se ho sempre errore, vuol dire che magari era già avviato il sim quindi è da resettare sim e ardu
+      return false;
+    }
+    delay(2500);
+    Log.noticeln("Inizializzazione internet terminata");
+    sendPositionInPost = true;
+    break;
+  case STOP_SEND_GPS_SITE:
+    Log.noticeln("Stacco internet e GPS");
+    if (!sim808.detachGPS())
+    {
+      Log.noticeln("Error detaching GPS.");
+      return false;
+    }
+    if (!sim808.close())
+    {
+      Log.noticeln("Error closing TCP connection.");
+      return false;
+    }
+    sim808.disconnect();
+    sendPositionInPost = false;
+    break;
+  case SEND_POSITION_CAR:
+    if (!gps_attached)
+      gps_attached = sim808.attachGPS();
+    if (!gps_attached)
+    {
+      Log.noticeln("Error connection with GPS" NL);
+      return false; // Il sim non riesce a connettere il GPS!
+    }
+
+    coords = get_GPS();
+    delay(1500);
+
+    if (coords != "")
+    {
+      /* Log.notice("Coordinate ottenute: " NL);
+      Serial.println(coords); */
+      // ---- Invio SMS
+      String msg = "Posizione auto: https://www.google.com/maps/search/?api=1&query=" + coords;
+      int n = msg.length();
+      char char_array[n + 1];
+      strcpy(char_array, msg.c_str());
+      sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, char_array);
+    }
+    break;
+  default:
+    break;
+  }
+  smsRead = -1;
+  return true;
+}
+
 void initializeBuffersForSms()
 {
-  memset(buffer, '\0', 300);
+  memset(smsBuffer, '\0', (int)BUFFER_SMS_SIZE);
   memset(phone, '\0', 20);
   memset(datetime, '\0', 40);
+}
+
+void restartSimAndAVR()
+{
+  Log.notice("DA IMPLEMENTARE! -- ");
+  Log.noticeln("ERRORE! FIX DOPO 5 MIN NON ANCORA OTTENUTO. RIAVVIO ARDUINO E SIM");
 }
