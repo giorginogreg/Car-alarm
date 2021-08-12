@@ -105,11 +105,11 @@ void setup()
 {
   pinMode(PIN_RX_SIM, OUTPUT);
   pinMode(PIN_TX_SIM, INPUT);
-  
+  pinMode(SIM_PWR, OUTPUT);
+  pinMode(SIM_RST, OUTPUT);
+
   mySerial.begin(SIM808_BAUDRATE);
   Serial.begin(SERIAL_BAUDRATE);
-  pinMode(SIM_PWR, OUTPUT);
-  
 
   // Initialize with log level and log output.
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
@@ -117,14 +117,17 @@ void setup()
   // gyro.setupGyro();
   // setupUS();
 
-   
-  if (!sim808.checkPowerUp())
-   sim808.powerUpDown(SIM_PWR);
-      
+  do
+  {
+    sim808.powerReset(SIM_RST);
+    delay(500);
+    sim808.powerUpDown(SIM_PWR);
+    delay(7000);
+  } while (!sim808.checkPowerUp());
 
   Log.notice("Initializing" NL);
 
-  //delay(15000);
+  delay(10000);
 
   // first_distance = getDistance();
   // gyro.readAndUpdateValues();
