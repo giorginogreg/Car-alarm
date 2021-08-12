@@ -309,7 +309,7 @@ public:
     /** Tests to see if requested software serial port is actively listening.
      *  @returns none
      */
-    bool isListening(void);
+    // bool isListening(void);
 
     /** convert the host to ip
      *  @param host host ip string, ex. 10.11.12.13
