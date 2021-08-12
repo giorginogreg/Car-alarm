@@ -396,25 +396,31 @@ void call()
 
 void sendPostData()
 {
-  sendData("AT+HTTPINIT", 1000, true);
+  sendData("AT+HTTPINIT", 1000);
   delay(1500);
 
-  sendData("AT+HTTPPARA=\"CID\",1", 1000, true);
+  sendData("AT+HTTPPARA=\"CID\",1", 1000);
   delay(1500);
 
-  sendData("AT+HTTPPARA=\"URL\",\"http://webhook.site/dde9ac46-6f83-45dd-bf45-9525979e27cc\"", 1000, true);
+  sendData("AT+HTTPPARA=\"URL\",\"http://webhook.site/fe09cb3b-2961-4000-bc8f-5c03feaef0d1\"", 1000);
   delay(1500);
-  sendData("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 1000, true);
+  sendData("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 1000);
   delay(1500);
-  sendData("AT+HTTPDATA=\"40,20000\"", 1000, true);
-  delay(1500);
+
   String body = "{latitude:" + latitude_s + ";longitude:" + longitude_s + "}";
   int n = body.length();
+  String command = "AT+HTTPDATA=" + String(n) + ",20000";
+  sendData(command, 1000);
+  delay(1500);
   char char_array[n + 1];
   strcpy(char_array, body.c_str());
-  sendData(char_array, 1000, true);
+  sendData(char_array, 1000);
 
-  sendData("AT+HTTPACTION=1", 1000, true);
+  sendData("AT+HTTPACTION=1", 1000);
+  delay(1500);
+
+  sendData("AT+HTTPTERM", 1000);
+  delay(2500);
 }
 
 int readSmsFromMyPhone()
