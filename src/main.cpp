@@ -117,12 +117,12 @@ void setup()
 
   do
   {
-    //Log.noticeln("Resetting Sim808");
-    //sim808.powerReset(SIM_RST);
-    //delay(500);
+    Log.noticeln("Resetting Sim808");
+    sim808.powerReset(SIM_PWR);
+    delay(1000);
     Log.noticeln("Powering Sim808");
     sim808.powerUpDown(SIM_PWR);
-    delay(5000);
+    delay(10000);
   } while (!sim808.checkPowerUp());
 
   Log.notice("Initializing" NL);

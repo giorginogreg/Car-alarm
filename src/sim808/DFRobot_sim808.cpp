@@ -85,19 +85,16 @@ void DFRobot_SIM808::powerUpDown(uint8_t pin)
 {
     // power on pulse for SIM900 Shield
     digitalWrite(pin, HIGH);
-    delay(2000);
+    delay(1000);
     digitalWrite(pin, LOW);
-    delay(4000);
 }
 
 void DFRobot_SIM808::powerReset(uint8_t pin)
 {
     // reset for SIM800L board.
-    // RST pin has to be OUTPUT, HIGH
-    digitalWrite(pin, LOW);
-    delay(1000);
     digitalWrite(pin, HIGH);
-    delay(4000);
+    delay(3000);
+    digitalWrite(pin, LOW);
 }
 
 bool DFRobot_SIM808::checkSIMStatus(void)
