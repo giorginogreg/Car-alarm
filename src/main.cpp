@@ -24,7 +24,7 @@ const int PIN_ROSA = PB3;
 #define STOP_SEND_GPS_SITE 2  //DISATTIVA_INVIO_POSIZIONE_GPS
 #define SEND_POSITION_CAR 3   //SEND_POSITION_CAR
 
-#define COMMANDS_BUFFER_SIZE 6
+#define COMMANDS_BUFFER_SIZE 7
 char PHONE_NUMBER_WHO_HAS_TO_SEND_SMS[11] = "3206866749";
 
 SoftwareSerial mySerial(PIN_TX_SIM, PIN_RX_SIM);
@@ -61,9 +61,10 @@ char datetime[40];
 
 bool gps_attached = false;
 bool sendPositionInPost = false;
-unsigned long previousMillis, currentMillis;
+unsigned long previousMillis, previousMillis2, currentMillis;
 
-const long interval = 15000;
+const long interval = 20000;
+const long interval2 = 30000; // Intervallo di invio posizione heroku
 
 // --- Prototypes
 String get_GPS();
@@ -155,6 +156,7 @@ void setup()
   //isAlarmActive = digitalRead(PIN_ROSA) > 0;
   isAlarmActive = false; // Scritto solo per debug
   previousMillis = millis();
+  previousMillis2 = millis();
 }
 
 void loop()
@@ -166,27 +168,32 @@ void loop()
     previousMillis = millis();
 
     int smsRead = readSmsFromMyPhone();
-    Serial.print("smsRead: ");
-    Serial.println(smsRead);
+    if (smsRead > 0)
+    {
+      Serial.print("smsRead: ");
+      Serial.println(smsRead);
+    }
     //smsRead = SEND_POSITION_CAR; // Only for debug
+    if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
+      return;
   }
 
-  if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
-    return;
-  if (sendPositionInPost)
+  if ((currentMillis - previousMillis2) >= interval2) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
-    Log.notice("Invio posizione in post");
+    previousMillis2 = millis();
+    if (sendPositionInPost)
+    {
+      Log.notice("Invio posizione in post");
 
-    coords = get_GPS();
-    delay(2500);
+      coords = get_GPS();
+      delay(2500);
 
-    sendPostData();
-    sendPositionInPost = false;
+      sendPostData();
+    }
   }
 
   if (isAlarmActive)
   {
-    Log.notice("Allarme attivo!");
     //measured_distance = getDistance();
     //gyro.updateAccellGyro();
 
@@ -280,7 +287,7 @@ String get_GPS()
       !fixObtained &&
       ((millis() - secondTimer) < 300000)); // Attendo 5 minuti, appeno supero e non ho ancora ottenuto fix, resetto gps e avr
 
-  if (!fixObtained && (millis() - secondTimer) < 300000)
+  if (!fixObtained && (millis() - secondTimer) >= 300000)
     restartSimAndAVR();
 
   return coordsToOutput;
@@ -322,16 +329,6 @@ void call()
 
 void sendPostData()
 {
-  sendData("AT+CSTT=\"internet.it\"", 1000);
-  delay(1500);
-
-  sendData("AT+CIICR", 1000);
-  delay(1500);
-
-  sendData("AT+CIFSR", 1000);
-  delay(1500);
-  sendData("AT+CIPSPRT=1", 1000);
-  delay(1500);
   sendData("AT+CIPSTART=\"TCP\",\"allarme-auto.herokuapp.com\",80", 3500);
   delay(1500); // Aspettare connect ok
 
@@ -339,14 +336,15 @@ void sendPostData()
   commands[0] = "POST / HTTP/1.1\0";
   commands[1] = "Host: allarme-auto.herokuapp.com\0";
   commands[2] = "Content-Type: application/x-www-form-urlencoded\0";
+  commands[3] = "Connection: Close\0";
   String body = "latitude=" + latitude_s + "&longitude=" + longitude_s + "\0";
   int length_body = body.length();
   char buffer_composed[50];
   memset(buffer_composed, '\0', 50);
   int length_buffer_composed = sprintf(buffer_composed, "Content-Length: %d\0", length_body);
-  commands[3] = String(buffer_composed);
-  commands[4] = "";
-  commands[5] = body;
+  commands[4] = String(buffer_composed);
+  commands[5] = "";
+  commands[6] = body;
 
   int sum_chars = 0;
   for (int i = 0; i < COMMANDS_BUFFER_SIZE; i++)
@@ -381,15 +379,15 @@ int readSmsFromMyPhone()
     Log.notice("BUFFER:");
     Log.notice(smsBuffer);
 
-    if (strstr(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, phone) != NULL)
-    {
-      if (strstr("ATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
-        return START_SEND_GPS_SITE;
-      else if (strstr("DISATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
-        return STOP_SEND_GPS_SITE;
-      else
-        return SEND_POSITION_CAR;
-    }
+    /// if (strstr(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, phone) != NULL)
+    //{
+    if (strstr("ATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
+      return START_SEND_GPS_SITE;
+    else if (strstr("DISATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
+      return STOP_SEND_GPS_SITE;
+    else if (strstr("SEND_POSITION_CAR", smsBuffer) != NULL)
+      return SEND_POSITION_CAR;
+    // }
     initializeBuffersForSms();
   }
   return -1; // TODO: rimuovere dopo debug
@@ -402,6 +400,7 @@ String floatToString(float x, byte precision = 2)
 
 bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
 {
+
   switch (smsReceived)
   {
   case START_SEND_GPS_SITE:
@@ -412,19 +411,31 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
       Log.noticeln("Error connection with GPS" NL);
       return false; // Il sim non riesce a connettere il GPS!
     }
-    if (!sim808_check_with_cmd("AT+SAPBR=3,1,\"APN\",\"internet.it\"\r\n", "OK", CMD))
+
+    if (!sim808_check_with_cmd("AT+CSTT=\"internet.it\"\r\n", "OK", CMD))
     {
       Log.noticeln("Error connection with gprs" NL);
       return false;
     }
     delay(3500);
 
-    if (!sim808_check_with_cmd("AT+SAPBR=1,1\r\n", "OK", CMD))
+    if (!sim808_check_with_cmd("AT+CIICR\r\n", "OK", CMD))
     {
-      Log.noticeln("Error connection with gprs 2" NL); //TODO: Anche qui, se ho sempre errore, vuol dire che magari era già avviato il sim quindi è da resettare sim e ardu
+      Log.noticeln("Error connection with gprs 2" NL);
       return false;
     }
     delay(2500);
+
+    sendData("AT+CIFSR", 1000); // Non lo metto con il check perchè ritorna un ip in caso positivo.
+    delay(1500);
+
+    if (!sim808_check_with_cmd("AT+CIPSPRT=1\r\n", "OK", CMD))
+    {
+      Log.noticeln("Error connection with gprs 3" NL);
+      return false;
+    }
+    delay(2500);
+
     Log.noticeln("Inizializzazione internet terminata");
     sendPositionInPost = true;
     break;
@@ -435,6 +446,7 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
       Log.noticeln("Error detaching GPS.");
       return false;
     }
+    gps_attached = false;
     if (!sim808.close())
     {
       Log.noticeln("Error closing TCP connection.");
@@ -442,8 +454,10 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
     }
     sim808.disconnect();
     sendPositionInPost = false;
+    Log.noticeln("Connessione terminata, gps staccato");
     break;
   case SEND_POSITION_CAR:
+    Log.noticeln("Sending Position car...");
     if (!gps_attached)
       gps_attached = sim808.attachGPS();
     if (!gps_attached)
@@ -457,8 +471,6 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
 
     if (coords != "")
     {
-      /* Log.notice("Coordinate ottenute: " NL);
-      Serial.println(coords); */
       // ---- Invio SMS
       String msg = "Posizione auto: https://www.google.com/maps/search/?api=1&query=" + coords;
       int n = msg.length();
