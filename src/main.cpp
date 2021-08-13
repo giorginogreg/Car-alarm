@@ -165,6 +165,7 @@ void loop()
 
   if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
+    Log.noticeln("+++ Leggo msg +++");
     previousMillis = millis();
 
     int smsRead = readSmsFromMyPhone();
@@ -180,6 +181,8 @@ void loop()
 
   if ((currentMillis - previousMillis2) >= interval2) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
+    Log.noticeln("+++ invio posizione in post +++");
+
     previousMillis2 = millis();
     if (sendPositionInPost)
     {
@@ -220,7 +223,8 @@ String get_GPS()
     counter = 0;
     answer = 0;
     firstTimer = millis();
-
+    latitude_s = "";
+    longitude_s = "";
     memset(frame, '\0', sizeof(char) * FRAME_LENGTH); // Initialize the string
     Log.noticeln("Invio cgnsinf");
     mySerial.write("AT+CGNSINF\r\n");
@@ -366,8 +370,8 @@ void sendPostData()
     delay(200);
   }
 
-  sendData(commands[COMMANDS_BUFFER_SIZE - 1].c_str(), 3500); // Fatto a mano per leggere risposta
-
+  sendData(commands[COMMANDS_BUFFER_SIZE - 1].c_str(), 6000); // Fatto a mano per leggere risposta
+  mySerial.flush();
   Log.noticeln("Invio effettuato");
 }
 
@@ -376,8 +380,8 @@ int readSmsFromMyPhone()
   while ((smsUnread = sim808.isSMSunread()) > 0)
   {
     sim808.readSMS(smsUnread, smsBuffer, (int)BUFFER_SMS_SIZE, phone, datetime);
-    Log.notice("BUFFER:");
-    Log.notice(smsBuffer);
+    Log.notice("BUFFER sms letti:  ");
+    Serial.println(smsBuffer);
 
     /// if (strstr(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, phone) != NULL)
     //{
@@ -390,7 +394,7 @@ int readSmsFromMyPhone()
     // }
     initializeBuffersForSms();
   }
-  return -1; // TODO: rimuovere dopo debug
+  return -1;
 }
 
 String floatToString(float x, byte precision = 2)
