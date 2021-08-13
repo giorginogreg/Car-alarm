@@ -23,6 +23,8 @@ const int PIN_ROSA = PB3;
 #define START_SEND_GPS_SITE 1 //ATTIVA_INVIO_POSIZIONE_GPS
 #define STOP_SEND_GPS_SITE 2  //DISATTIVA_INVIO_POSIZIONE_GPS
 #define SEND_POSITION_CAR 3   //SEND_POSITION_CAR
+
+#define COMMANDS_BUFFER_SIZE 6
 char PHONE_NUMBER_WHO_HAS_TO_SEND_SMS[11] = "3206866749";
 
 SoftwareSerial mySerial(PIN_TX_SIM, PIN_RX_SIM);
@@ -199,7 +201,6 @@ void loop()
 
 String get_GPS()
 {
-
   long firstTimer, secondTimer;
 
   bool fixObtained = false;
@@ -321,31 +322,55 @@ void call()
 
 void sendPostData()
 {
-  sendData("AT+HTTPINIT", 1000);
+  sendData("AT+CSTT=\"internet.it\"", 1000);
   delay(1500);
 
-  sendData("AT+HTTPPARA=\"CID\",1", 1000);
+  sendData("AT+CIICR", 1000);
   delay(1500);
 
-  sendData("AT+HTTPPARA=\"URL\",\"http://webhook.site/fe09cb3b-2961-4000-bc8f-5c03feaef0d1\"", 1000);
+  sendData("AT+CIFSR", 1000);
   delay(1500);
-  sendData("AT+HTTPPARA=\"CONTENT\",\"application/json\"", 1000);
+  sendData("AT+CIPSPRT=1", 1000);
   delay(1500);
+  sendData("AT+CIPSTART=\"TCP\",\"allarme-auto.herokuapp.com\",80", 3500);
+  delay(1500); // Aspettare connect ok
 
-  String body = "{latitude:" + latitude_s + ";longitude:" + longitude_s + "}";
-  int n = body.length();
-  String command = "AT+HTTPDATA=" + String(n) + ",20000";
-  sendData(command, 1000);
-  delay(1500);
-  char char_array[n + 1];
-  strcpy(char_array, body.c_str());
-  sendData(char_array, 1000);
+  String commands[COMMANDS_BUFFER_SIZE];
+  commands[0] = "POST / HTTP/1.1\0";
+  commands[1] = "Host: allarme-auto.herokuapp.com\0";
+  commands[2] = "Content-Type: application/x-www-form-urlencoded\0";
+  String body = "latitude=" + latitude_s + "&longitude=" + longitude_s + "\0";
+  int length_body = body.length();
+  char buffer_composed[50];
+  memset(buffer_composed, '\0', 50);
+  int length_buffer_composed = sprintf(buffer_composed, "Content-Length: %d\0", length_body);
+  commands[3] = String(buffer_composed);
+  commands[4] = "";
+  commands[5] = body;
 
-  sendData("AT+HTTPACTION=1", 1000);
-  delay(1500);
+  int sum_chars = 0;
+  for (int i = 0; i < COMMANDS_BUFFER_SIZE; i++)
+    sum_chars += commands[i].length() + 2; // +2 => \r \n
 
-  sendData("AT+HTTPTERM", 1000);
-  delay(2500);
+  // Log.notice("Lunghezza buffer: ");
+  //Serial.println(sum_chars);
+
+  char cipsend[50];
+  memset(cipsend, '\0', 50);
+  sprintf(cipsend, "AT+CIPSEND=%d", sum_chars);
+  sendData(cipsend, 1500);
+
+  for (int i = 0; i < COMMANDS_BUFFER_SIZE - 1; i++)
+  {
+    //Serial.print("Comando da inviare: ");
+    //Serial.println(commands[i] + "\\r\\n");
+    mySerial.println(commands[i]);
+    delay(200);
+  }
+
+  sendData(commands[COMMANDS_BUFFER_SIZE - 1].c_str(), 3500); // Fatto a mano per leggere risposta
+
+  Log.noticeln("Invio effettuato");
 }
 
 int readSmsFromMyPhone()
