@@ -15,14 +15,14 @@ void setupAccel()
   do
   {
     Serial.println("--- FIRST READ ---");
-    updateValues();
+    updateValuesGyro();
     initXval = currentaX;
     initYval = currentaY;
     initZval = currentaZ;
   } while (AcX == 0 || AcY == 0 || AcZ == 0);
 }
 
-void updateValues()
+void updateValuesGyro()
 {
   Wire.beginTransmission(MPU_addr);
   Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H)
@@ -34,7 +34,7 @@ void updateValues()
   currentaX = AcX / 16384.;
   currentaY = AcY / 16384.;
   currentaZ = AcZ / 16384.;
-  if (DEBUG)
+  if (DEBUG_GYRO)
   {
     Serial.print("AcX = ");
     Serial.println(currentaX - initXval);

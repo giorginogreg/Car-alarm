@@ -1,9 +1,9 @@
 #ifndef ACCELL_GYRO_H
 #define ACCELL_GYRO_H
 
-#define DEBUG false
+#define DEBUG_GYRO false
 void setupAccel();
-void updateValues();
+void updateValuesGyro();
 bool movementDetected();
 
 #include <Wire.h>

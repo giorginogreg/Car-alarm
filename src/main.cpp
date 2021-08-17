@@ -20,8 +20,8 @@
 #define NL "\n"
 const int PIN_ROSA = PB3;
 
-#define START_SEND_GPS_SITE 1 //ATTIVA_INVIO_POSIZIONE_GPS
-#define STOP_SEND_GPS_SITE 2  //DISATTIVA_INVIO_POSIZIONE_GPS
+#define START_SEND_GPS_SITE 1 //SUBMIT_GPS_SERVER
+#define STOP_SEND_GPS_SITE 2  //STOP_SUBMIT_GPS_SERVER
 #define SEND_POSITION_CAR 3   //SEND_POSITION_CAR
 
 #define COMMANDS_BUFFER_SIZE 7
@@ -35,7 +35,7 @@ int first_distance, measured_distance; // variable for the distance measurement
 long duration;                         // variable for the duration of sound wave travel
 
 bool isAlarmActive;
-
+bool smsSent = false;
 String coords;
 
 #define FRAME_LENGTH 140
@@ -74,11 +74,11 @@ boolean haveToSendPeriodicallyPosition();
 int readSmsFromMyPhone();
 void sendPostData();
 void call();
-bool doActionBasedOnSmsRcvd(unsigned int smsReceived);
+bool doActionBasedOnSmsRcvd(int smsReceived);
 void restartSimAndAVR();
 // --- Code!
 
-String sendData(String command, const unsigned int timeout)
+String sendData(String command, const unsigned int timeout, bool debug = true)
 {
   String response = "";
   mySerial.println(command);
@@ -91,7 +91,7 @@ String sendData(String command, const unsigned int timeout)
       response += c;
     }
   }
-  if (DEBUG)
+  if (debug)
   {
     Serial.println(response);
   }
@@ -132,7 +132,7 @@ void setup()
   Serial.print("first_distance calculated: ");
   Serial.println(first_distance);
 
-  //********Initialize sim808 module*************
+  // ********Initialize sim808 module*************
   bool initialized = false;
   while (!initialized)
   {
@@ -154,6 +154,7 @@ void setup()
 
   mySerial.print("AT+CMGDA=\"");
   mySerial.println("DEL ALL\"");
+  delay(1500);
   //sendData("AT+CMGDA=\"DEL ALL\"", 1500);
 
   //isAlarmActive = digitalRead(PIN_ROSA) > 0;
@@ -164,20 +165,14 @@ void setup()
 
 void loop()
 {
-  updateValues();
+  updateValuesGyro();
   currentMillis = millis();
 
   if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
     previousMillis = millis();
 
-    if (smsRead > 0)
-    {
-      Serial.print("smsRead: ");
-      Serial.println(smsRead);
-      sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, "SMS ricevuto, provvedo a quanto richiesto...");
-    }
-    else
+    if (smsRead < 0)
       smsRead = readSmsFromMyPhone(); // leggo solo se valore è -1 (può essere che ci sia già un messaggio letto precedentemente e non ancora settato a 0)
 
     if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
@@ -193,7 +188,10 @@ void loop()
 
       coords = get_GPS();
       if (strstr(coords.c_str(), "ERROR"))
+      {
+        Log.notice("il metodo get_GPS è uscito con ERROR");
         return;
+      }
       delay(2500);
 
       sendPostData();
@@ -259,10 +257,10 @@ String get_GPS()
 
     if (DEBUG)
     {
-      Log.notice("answer: ");
-      Serial.println(answer);
+      /*   Log.notice("answer: ");
+      Serial.println(answer); */
 
-      Serial.println("\n\n\n\n\n ----- DEBUG BUFFER dopo la lettura del fix --------- ");
+      Serial.println("\n\n\n\n\n ----- DEBUG BUFFER after fix reading... --------- ");
       Serial.println(frame);
       Serial.println("\n----- ---------- ---------- --------- ");
     }
@@ -291,13 +289,13 @@ String get_GPS()
     }
     else // Risposta non ottenuta in tempo, oppure ok non ricevuto. Flusho seriale dopo attesa di 5 secondi.
     {
-      Log.noticeln("Risposta senza OK o non in tempo valido");
+      Log.noticeln("ERROR: Answer without fix obtained or fix not read in valid time. Waiting a little bit then flushing serial");
       delay(5000);
       mySerial.flush();
     }
     if (!fixObtained)
     {
-      Log.noticeln("Fix non ancora ottenuto, aspetto 3 sec prima del prossimo comando");
+      Log.noticeln("Valid answer, but no fix obtained yet. Waiting 3 second before next request...");
       delay(3000); // Aspetto 5 sec prima di mandare il prossimo comando.
     }
   } while (
@@ -307,7 +305,6 @@ String get_GPS()
   if (!fixObtained && (millis() - secondTimer) >= 300000)
   {
     sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, "FIX non ancora ottenuto. Riavvio loop");
-
     return "ERROR";
   }
 
@@ -387,7 +384,7 @@ void sendPostData()
     delay(200);
   }
 
-  sendData(commands[COMMANDS_BUFFER_SIZE - 1].c_str(), 6000); // Fatto a mano per leggere risposta
+  sendData(commands[COMMANDS_BUFFER_SIZE - 1].c_str(), 6000, false); // Fatto a mano per leggere risposta
   mySerial.flush();
   Log.noticeln("Invio effettuato");
 }
@@ -402,9 +399,9 @@ int readSmsFromMyPhone()
 
     /// if (strstr(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, phone) != NULL)
     //{
-    if (strstr("ATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
+    if (strstr("SUBMIT_GPS_SERVER", smsBuffer) != NULL)
       return START_SEND_GPS_SITE;
-    else if (strstr("DISATTIVA_INVIO_POSIZIONE_GPS", smsBuffer) != NULL)
+    else if (strstr("STOP_SUBMIT_GPS_SERVER", smsBuffer) != NULL)
       return STOP_SEND_GPS_SITE;
     else if (strstr("SEND_POSITION_CAR", smsBuffer) != NULL)
       return SEND_POSITION_CAR;
@@ -419,8 +416,20 @@ String floatToString(float x, byte precision = 2)
   return String(x, precision);
 }
 
-bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
+bool doActionBasedOnSmsRcvd(int smsReceived = -1)
 {
+  if (smsReceived > 0)
+  {
+    if (!smsSent)
+    {
+      char buffer_feedback[50];
+      memset(buffer_feedback, '\0', 50);
+      sprintf(buffer_feedback, "SMS ricevuto: %d, provvedo a quanto richiesto.", smsReceived);
+      sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, buffer_feedback);
+      smsSent = true;
+    }
+  }
+
   switch (smsReceived)
   {
   case START_SEND_GPS_SITE:
@@ -487,6 +496,11 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
     }
 
     coords = get_GPS();
+    if (strstr(coords.c_str(), "ERROR"))
+    {
+      Log.notice("il metodo get_GPS è uscito con ERROR");
+      return false;
+    }
     delay(1500);
 
     if (coords != "")
@@ -504,6 +518,7 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
   }
 
   smsRead = -1; // resetto solo quando ho terminato di processare
+  smsSent = false;
   return true;
 }
 
