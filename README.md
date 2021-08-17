@@ -34,3 +34,4 @@ In get vengono selezionati in base ai giorni le coord e i tracciati della macchi
 ---
 Da fare  
  - inserire chiamata se qualcosa non si setta correttamente
+ - Invio richieste get/post a pagina che determina possibile antijamming se non riceve heartbeat per tot minuti

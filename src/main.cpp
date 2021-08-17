@@ -113,10 +113,10 @@ void setup()
   // Initialize with log level and log output.
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
-  // gyro.setupGyro();
-  // setupUS();
+  gyro.setupGyro();
+  setupUS();
 
-  do
+  /*   do
   {
     Log.noticeln("Resetting Sim808");
     sim808.powerReset(SIM_PWR);
@@ -128,13 +128,15 @@ void setup()
 
   Log.notice("Initializing" NL);
 
-  delay(10000);
+  delay(10000); */
 
-  // first_distance = getDistance();
-  // gyro.readAndUpdateValues();
+  first_distance = getDistance();
+  Serial.print("first_distance calculated: ");
+  Serial.println(first_distance);
+  gyro.readAndUpdateValues();
 
   //********Initialize sim808 module*************
-  bool initialized = false;
+  /* bool initialized = false;
   while (!initialized)
   {
     int times = 1;
@@ -153,8 +155,10 @@ void setup()
 
   initializeBuffersForSms();
 
+  sendData("AT+CMGDA=\"DEL ALL\"", 1500);
+ */
   //isAlarmActive = digitalRead(PIN_ROSA) > 0;
-  isAlarmActive = false; // Scritto solo per debug
+  isAlarmActive = true; // Scritto solo per debug
   previousMillis = millis();
   previousMillis2 = millis();
 }
@@ -163,9 +167,8 @@ void loop()
 {
   currentMillis = millis();
 
-  if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
+  /*  if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
-    Log.noticeln("+++ Leggo msg +++");
     previousMillis = millis();
 
     int smsRead = readSmsFromMyPhone();
@@ -174,15 +177,12 @@ void loop()
       Serial.print("smsRead: ");
       Serial.println(smsRead);
     }
-    //smsRead = SEND_POSITION_CAR; // Only for debug
     if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
       return;
   }
 
   if ((currentMillis - previousMillis2) >= interval2) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
-    Log.noticeln("+++ invio posizione in post +++");
-
     previousMillis2 = millis();
     if (sendPositionInPost)
     {
@@ -193,19 +193,23 @@ void loop()
 
       sendPostData();
     }
-  }
+  } */
 
   if (isAlarmActive)
   {
-    //measured_distance = getDistance();
-    //gyro.updateAccellGyro();
-
-    if (
-        //gyro.movementDetected() ||
+    measured_distance = getDistance();
+    Serial.print("measured calculated: ");
+    Serial.println(measured_distance);
+    gyro.updateAccellGyro();
+    bool gyroMovDet = gyro.movementDetected();
+    Serial.print("gyroMovDet: ");
+    Serial.println(gyroMovDet);
+    if (gyroMovDet ||
         (measured_distance - first_distance < sogliaDistanza))
-      // casi coperti: furto nella notte, furto con jammer o botta all'auto.
-      call();
-    delay(5000);
+      Log.notice("DENTRO ALLARME");
+    // casi coperti: furto nella notte, furto con jammer o botta all'auto.
+    //call();
+    //delay(5000);
   }
 }
 

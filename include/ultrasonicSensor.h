@@ -4,7 +4,7 @@
 #include <SoftwareSerial.h>
 #include <Arduino.h>
 
-static const int US_TRIG_PIN = 6, US_ECHO_PIN = 7;
+static const int US_TRIG_PIN = PB3, US_ECHO_PIN = PB4;
 static const float sogliaSpinta = 0.5;
 static const float sogliaDistanza = 10;
 

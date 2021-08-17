@@ -10,6 +10,9 @@ void MyGyro::setupGyro()
   accelgyro.setMotionDetectionThreshold(2);
   accelgyro.setMotionDetectionDuration(40);
   accelgyro.setZeroMotionDetectionDuration(1);
+  delay(500);
+  Serial.println("--- First read! --- ");
+  updateAccellGyro();
   initXval = currentaX;
   initYval = currentaY;
   initZval = currentaZ;
@@ -29,6 +32,13 @@ void MyGyro::readAndUpdateValues()
   currentaX = ax / 16384.;
   currentaY = ay / 16384.;
   currentaZ = az / 16384.;
+
+  Serial.print("Current AX: ");
+  Serial.println(currentaX);
+  Serial.print("Current AY: ");
+  Serial.println(currentaY);
+  Serial.print("Current Az: ");
+  Serial.println(currentaZ);
 }
 
 bool MyGyro::movementDetected()
