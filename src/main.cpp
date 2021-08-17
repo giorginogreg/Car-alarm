@@ -36,8 +36,6 @@ long duration;                         // variable for the duration of sound wav
 
 bool isAlarmActive;
 
-MyGyro gyro;
-
 String coords;
 
 #define FRAME_LENGTH 140
@@ -113,10 +111,10 @@ void setup()
   // Initialize with log level and log output.
   Log.begin(LOG_LEVEL_VERBOSE, &Serial);
 
-  gyro.setupGyro();
+  setupAccel();
   setupUS();
 
-  /*   do
+  do
   {
     Log.noticeln("Resetting Sim808");
     sim808.powerReset(SIM_PWR);
@@ -128,15 +126,14 @@ void setup()
 
   Log.notice("Initializing" NL);
 
-  delay(10000); */
+  delay(10000);
 
   first_distance = getDistance();
   Serial.print("first_distance calculated: ");
   Serial.println(first_distance);
-  gyro.readAndUpdateValues();
 
   //********Initialize sim808 module*************
-  /* bool initialized = false;
+  bool initialized = false;
   while (!initialized)
   {
     int times = 1;
@@ -155,8 +152,10 @@ void setup()
 
   initializeBuffersForSms();
 
-  sendData("AT+CMGDA=\"DEL ALL\"", 1500);
- */
+  mySerial.print("AT+CMGDA=\"");
+  mySerial.println("DEL ALL\"");
+  //sendData("AT+CMGDA=\"DEL ALL\"", 1500);
+
   //isAlarmActive = digitalRead(PIN_ROSA) > 0;
   isAlarmActive = true; // Scritto solo per debug
   previousMillis = millis();
@@ -165,18 +164,22 @@ void setup()
 
 void loop()
 {
+  updateValues();
   currentMillis = millis();
 
-  /*  if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
+  if ((currentMillis - previousMillis) >= interval) // Eseguo codice sottostante solo a intervalli di <interval> secondi
   {
     previousMillis = millis();
 
-    int smsRead = readSmsFromMyPhone();
     if (smsRead > 0)
     {
       Serial.print("smsRead: ");
       Serial.println(smsRead);
+      sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, "SMS ricevuto, provvedo a quanto richiesto...");
     }
+    else
+      smsRead = readSmsFromMyPhone(); // leggo solo se valore è -1 (può essere che ci sia già un messaggio letto precedentemente e non ancora settato a 0)
+
     if (!doActionBasedOnSmsRcvd(smsRead)) // If there is some sms read and any action goes wrong, restart the loop
       return;
   }
@@ -189,27 +192,33 @@ void loop()
       Log.notice("Invio posizione in post");
 
       coords = get_GPS();
+      if (strstr(coords.c_str(), "ERROR"))
+        return;
       delay(2500);
 
       sendPostData();
     }
-  } */
+  }
 
   if (isAlarmActive)
   {
     measured_distance = getDistance();
-    Serial.print("measured calculated: ");
-    Serial.println(measured_distance);
-    gyro.updateAccellGyro();
-    bool gyroMovDet = gyro.movementDetected();
-    Serial.print("gyroMovDet: ");
-    Serial.println(gyroMovDet);
-    if (gyroMovDet ||
-        (measured_distance - first_distance < sogliaDistanza))
-      Log.notice("DENTRO ALLARME");
-    // casi coperti: furto nella notte, furto con jammer o botta all'auto.
-    //call();
-    //delay(5000);
+    /*  Serial.print("measured calculated: ");
+    Serial.println(measured_distance); */
+    bool gyroAlarm = movementDetected();
+    bool ultrasonicAlarm = ((first_distance - measured_distance) > sogliaDistanza);
+
+    if (gyroAlarm || ultrasonicAlarm)
+    {
+      // casi coperti: furto nella notte, furto con jammer o botta all'auto.
+
+      Serial.println("IN!");
+      Serial.println(gyroAlarm);
+      Serial.println(ultrasonicAlarm);
+      delay(1500);
+      call();
+      delay(5000);
+    }
   }
 }
 
@@ -296,7 +305,11 @@ String get_GPS()
       ((millis() - secondTimer) < 300000)); // Attendo 5 minuti, appeno supero e non ho ancora ottenuto fix, resetto gps e avr
 
   if (!fixObtained && (millis() - secondTimer) >= 300000)
-    restartSimAndAVR();
+  {
+    sim808.sendSMS(PHONE_NUMBER_WHO_HAS_TO_SEND_SMS, "FIX non ancora ottenuto. Riavvio loop");
+
+    return "ERROR";
+  }
 
   return coordsToOutput;
 }
@@ -408,7 +421,6 @@ String floatToString(float x, byte precision = 2)
 
 bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
 {
-
   switch (smsReceived)
   {
   case START_SEND_GPS_SITE:
@@ -490,7 +502,8 @@ bool doActionBasedOnSmsRcvd(unsigned int smsReceived)
   default:
     break;
   }
-  smsRead = -1;
+
+  smsRead = -1; // resetto solo quando ho terminato di processare
   return true;
 }
 
@@ -499,10 +512,4 @@ void initializeBuffersForSms()
   memset(smsBuffer, '\0', (int)BUFFER_SMS_SIZE);
   memset(phone, '\0', 20);
   memset(datetime, '\0', 40);
-}
-
-void restartSimAndAVR()
-{
-  Log.notice("DA IMPLEMENTARE! -- ");
-  Log.noticeln("ERRORE! FIX DOPO 5 MIN NON ANCORA OTTENUTO. RIAVVIO ARDUINO E SIM");
 }

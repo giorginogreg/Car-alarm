@@ -1,49 +1,55 @@
 #include "accelGyroGG.h"
-#include "logDebug.h"
+int16_t AcX, AcY, AcZ;
+float currentaX, currentaY, currentaZ;
+float initXval, initYval, initZval;
 
-void MyGyro::setupGyro()
+float sogliaSpinta = 0.15;
+
+void setupAccel()
 {
-  logDebug("Inizializzo il gyroscopio...");
-  accelgyro.initialize();
-  accelgyro.setAccelerometerPowerOnDelay(3);
-  accelgyro.setDHPFMode(1);
-  accelgyro.setMotionDetectionThreshold(2);
-  accelgyro.setMotionDetectionDuration(40);
-  accelgyro.setZeroMotionDetectionDuration(1);
-  delay(500);
-  Serial.println("--- First read! --- ");
-  updateAccellGyro();
-  initXval = currentaX;
-  initYval = currentaY;
-  initZval = currentaZ;
-  logDebug("Gyroscopio inizializzato correttamente!");
+  Wire.begin();
+  Wire.beginTransmission(MPU_addr);
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0);    // set to zero (wakes up the MPU-6050)
+  Wire.endTransmission(true);
+  do
+  {
+    Serial.println("--- FIRST READ ---");
+    updateValues();
+    initXval = currentaX;
+    initYval = currentaY;
+    initZval = currentaZ;
+  } while (AcX == 0 || AcY == 0 || AcZ == 0);
 }
 
-void MyGyro::updateAccellGyro()
+void updateValues()
 {
-  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  accelgyro.getAcceleration(&ax, &ay, &az);
+  Wire.beginTransmission(MPU_addr);
+  Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H)
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU_addr, 14, true); // request a total of 14 registers
+  AcX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
+  AcY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
+  AcZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
+  currentaX = AcX / 16384.;
+  currentaY = AcY / 16384.;
+  currentaZ = AcZ / 16384.;
+  if (DEBUG)
+  {
+    Serial.print("AcX = ");
+    Serial.println(currentaX - initXval);
+    Serial.print(" | AcY = ");
+    Serial.println(currentaY - initYval);
+    Serial.print(" | AcZ = ");
+    Serial.println(currentaZ - initZval);
+  }
 
-  readAndUpdateValues();
+  delay(333);
 }
 
-void MyGyro::readAndUpdateValues()
+bool movementDetected()
 {
-  currentaX = ax / 16384.;
-  currentaY = ay / 16384.;
-  currentaZ = az / 16384.;
-
-  Serial.print("Current AX: ");
-  Serial.println(currentaX);
-  Serial.print("Current AY: ");
-  Serial.println(currentaY);
-  Serial.print("Current Az: ");
-  Serial.println(currentaZ);
-}
-
-bool MyGyro::movementDetected()
-{
-  return (abs(currentaX) > abs(initXval) + sogliaSpinta) ||
-         (abs(currentaY) > abs(initYval) + sogliaSpinta) ||
-         (abs(currentaZ) > abs(initZval) + sogliaSpinta);
+  return (abs(currentaX - initXval) > sogliaSpinta) ||
+         (abs(currentaY - initYval) > sogliaSpinta) ||
+         (abs(currentaZ - initZval) > sogliaSpinta);
 }
